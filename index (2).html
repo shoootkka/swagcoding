@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>虚无之水 - 彻底的解构</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, #020814 0%, #0a3a6c 100%);
+            overflow: hidden;
+            user-select: none;
+            /* 设置全局默认字体 */
+            font-family: "SimSun", "Songti SC", "STSong", serif;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+            cursor: crosshair;
+            z-index: 1; /* 确保画布在背景之上，按钮之下 */
+        }
+
+        #restore-btn {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 30px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: rgba(255, 255, 255, 0.8);
+            font-family: inherit;
+            font-size: 16px;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.4s ease;
+            border-radius: 2px;
+            backdrop-filter: blur(4px);
+            z-index: 10; /* 确保按钮可以被点击 */
+        }
+
+        #restore-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            border-color: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 15px rgba(255,255,255,0.2);
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="water-canvas"></canvas>
+    <button id="restore-btn">重置秩序</button>
+
+    <script>
+        // 等待整个 DOM 加载完毕再执行，防止获取不到屏幕宽高
+        window.addEventListener('DOMContentLoaded', () => {
+            const textContent = "选择一种文化，成为文化的代言人。选择摇滚，成为文青、愤青；选择说唱，成为说唱小子；选择左倾，成为愤青；选择右倾，成为社会规则的维护者和游戏者；选择一种生活，成为一种生活下的人；选择一种消费方式，成为一种消费群体......选择不同，成为也不同。实际上，谁又有真的个性呢？哲学家也许会认同个性来源于个体，源于个体的理性、创造力、激情或者别的什么他妈的，但是要我说，这他妈的何尝不是最大的虚无主义呢？大势倾倾，小叙事雀起，人与人隔阂越来越大，老子没得选择，老子没得选择，老子没得选择，老子没得选择，新时代我没得选票......";
+
+            const canvas = document.getElementById('water-canvas');
+            const ctx = canvas.getContext('2d');
+            const restoreBtn = document.getElementById('restore-btn');
+
+            let particles = [];
+            let width, height;
+            let isRestoring = false;
+            let time = 0;
+            let fontSize = 20;
+
+            class Particle {
+                constructor(char, x, y) {
+                    this.char = char;
+                    this.originX = x; 
+                    this.originY = y;
+                    this.x = x;       
+                    this.y = y;
+                    this.vx = 0;      
+                    this.vy = 0;      
+                    this.isFloating = false; 
+                    this.randomSeed = Math.random() * 100; 
+                }
+
+                update() {
+                    if (isRestoring) {
+                        const dx = this.originX - this.x;
+                        const dy = this.originY - this.y;
+                        this.vx += dx * 0.02; 
+                        this.vy += dy * 0.02;
+                        this.vx *= 0.85;      
+                        this.vy *= 0.85;
+
+                        if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5 && Math.abs(this.vx) < 0.1) {
+                            this.x = this.originX;
+                            this.y = this.originY;
+                            this.isFloating = false;
+                            this.vx = 0;
+                            this.vy = 0;
+                        }
+                    } else if (this.isFloating) {
+                        // 彻底混沌的流体力学模拟
+                        this.vx += Math.sin(time * 1.5 + this.originY * 0.01 + this.randomSeed) * 0.03;
+                        this.vy += Math.cos(time * 1.5 + this.originX * 0.01 + this.randomSeed) * 0.03;
+                        this.vx *= 0.96;
+                        this.vy *= 0.96;
+                    } else {
+                        this.x = this.originX;
+                        this.y = this.originY;
+                        return;
+                    }
+
+                    this.x += this.vx;
+                    this.y += this.vy;
+                }
+
+                draw() {
+                    ctx.fillText(this.char, this.x, this.y);
+                }
+            }
+
+            function init() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                
+                const dpr = window.devicePixelRatio || 1;
+                // 【核心修复 1】设置物理分辨率
+                canvas.width = width * dpr;
+                canvas.height = height * dpr;
+                // 【核心修复 2】强制锁定 CSS 尺寸，防止画布暴走溢出
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+                
+                ctx.scale(dpr, dpr);
+
+                particles = [];
+                
+                // 动态计算字号，并规范化字体字符串
+                fontSize = Math.max(20, Math.floor(width * 0.015));
+                const fontString = `${fontSize}px "SimSun", "Songti SC", "STSong", serif`;
+                
+                // 必须在此处设置字体，才能准确计算文字宽度
+                ctx.font = fontString;
+                ctx.textBaseline = 'top';
+
+                const maxWidth = width * 0.6;
+                const startX = width * 0.2;
+                let startY = height * 0.25;
+                const lineHeight = fontSize * 1.8;
+
+                let currentX = startX;
+                let currentY = startY;
+
+                for (let i = 0; i < textContent.length; i++) {
+                    const char = textContent[i];
+                    const metrics = ctx.measureText(char);
+                    const charWidth = metrics.width;
+
+                    if (currentX + charWidth > startX + maxWidth) {
+                        currentX = startX;
+                        currentY += lineHeight;
+                    }
+
+                    particles.push(new Particle(char, currentX, currentY));
+                    currentX += charWidth;
+                }
+            }
+
+            function animate() {
+                ctx.clearRect(0, 0, width, height);
+                
+                // 【核心修复 3】动画循环中每一帧都必须重新声明画笔状态，防止丢失
+                ctx.font = `${fontSize}px "SimSun", "Songti SC", "STSong", serif`;
+                ctx.textBaseline = 'top';
+                ctx.fillStyle = '#ffffff'; 
+                
+                time += 0.01;
+
+                let allRestored = true;
+
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                    if (p.isFloating || Math.abs(p.x - p.originX) > 1) {
+                        allRestored = false;
+                    }
+                });
+
+                if (isRestoring && allRestored) {
+                    isRestoring = false;
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                isRestoring = false; 
+                const mouseX = e.clientX;
+                const mouseY = e.clientY;
+                
+                const impactRadius = 250; 
+                const impactForce = 25;   
+
+                particles.forEach(p => {
+                    const dx = p.x - mouseX;
+                    const dy = p.y - mouseY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < impactRadius) {
+                        p.isFloating = true;
+                        const force = (impactRadius - distance) / impactRadius;
+                        p.vx += (dx / distance) * force * impactForce;
+                        p.vy += (dy / distance) * force * impactForce;
+                    }
+                });
+            });
+
+            restoreBtn.addEventListener('click', () => {
+                isRestoring = true;
+            });
+
+            window.addEventListener('resize', () => {
+                init();
+                isRestoring = false;
+            });
+
+            // 启动
+            init();
+            animate();
+        });
+    </script>
+</body>
+</html>
