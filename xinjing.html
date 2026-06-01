@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>心经·水月空相</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            /* 深邃的水底渐变 */
+            background: radial-gradient(circle at center, #020814 0%, #051c38 65%, #0a264a 100%);
+            overflow: hidden;
+            user-select: none;
+            font-family: "SimSun", "Songti SC", "STSong", "KaiTi", serif;
+        }
+        
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            display: block;
+            cursor: crosshair;
+            z-index: 1;
+        }
+
+        /* 控制按钮容器 */
+        .control-panel {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            z-index: 10;
+        }
+
+        .btn {
+            padding: 10px 24px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: rgba(255, 255, 255, 0.7);
+            font-family: inherit;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+            border-radius: 4px;
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* 卍 按钮特定样式 */
+        #restore-btn {
+            font-size: 20px;
+            padding: 10px 20px;
+            font-weight: bold;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.6);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+        }
+
+        #hint-text {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: rgba(255, 255, 255, 0.25);
+            font-size: 13px;
+            letter-spacing: 2px;
+            z-index: 5;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="hint-text">点击水面荡起涟漪 | 连续双击归于无相</div>
+    <canvas id="water-canvas"></canvas>
+    
+    <div class="control-panel">
+        <button id="restore-btn" class="btn" title="重置秩序 (吉祥海云相)">卍</button>
+        <button id="void-btn" class="btn" title="诸法空相">觀空</button>
+    </div>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            const textContent = "觀自在菩薩，行深般若波羅蜜多時，照見五蘊皆空，度一切苦厄。舍利子，色不異空，空不異色。色即是空，空即是色。受、想、行、識，亦復如是。舍利子，是諸法空相，不生不滅，不垢不淨，不增不減。是故空中無色，無受、想、行、識；無眼、耳、鼻、舌、身、意；無色、聲、香、味、觸、法；無眼界，乃至無意識界；無無明，亦無無明盡，乃至無老死，亦無老死盡；無苦、集、滅、道；無智亦無得。以無所得故，菩提薩埵，依般若波羅蜜多故，心無掛礙。無掛礙故，無有恐怖，遠離顛倒夢想，究竟涅槃。三世諸佛，依般若波羅蜜多故，得阿耨多羅三藐三菩提。故知般若波羅蜜多，是大神咒，是大明咒，是無上咒，是無等等咒，能除一切苦，真实不虛。故說般若波羅蜜多咒，即說咒曰：揭諦揭諦，波羅揭諦，波羅僧揭諦，菩提薩婆訶。";
+
+            const canvas = document.getElementById('water-canvas');
+            const ctx = canvas.getContext('2d');
+            const restoreBtn = document.getElementById('restore-btn');
+            const voidBtn = document.getElementById('void-btn');
+
+            let particles = [];
+            let ripples = []; 
+            let width, height;
+            let isRestoring = false;
+            let isDisappearingSequentially = false;
+            let disappearIndex = 0;
+            let disappearTimer = 0;
+            let time = 0;
+            let fontSize = 22;
+
+            // 视觉水波纹：扩大波纹视觉表现
+            class VisualRipple {
+                constructor(x, y) {
+                    this.x = x;
+                    this.y = y;
+                    this.radius = 0;
+                    this.maxRadius = 350; // 增大视觉水波面积
+                    this.alpha = 0.5;
+                    this.speed = 2.2; 
+                }
+                update() {
+                    this.radius += this.speed;
+                    this.alpha = 0.5 * (1 - this.radius / this.maxRadius);
+                }
+                draw() {
+                    if (this.alpha <= 0) return;
+                    ctx.beginPath();
+                    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                    ctx.strokeStyle = `rgba(140, 190, 240, ${this.alpha})`;
+                    ctx.lineWidth = 1.0;
+                    ctx.stroke();
+                }
+            }
+
+            // 文字粒子
+            class Particle {
+                constructor(char, x, y) {
+                    this.char = char;
+                    this.originX = x; 
+                    this.originY = y;
+                    this.x = x;       
+                    this.y = y;
+                    this.vx = 0;      
+                    this.vy = 0;      
+                    this.isFloating = false; 
+                    this.alpha = 1;       
+                    this.targetAlpha = 1; 
+                    this.randomSeed = Math.random() * 100; 
+                }
+
+                update() {
+                    this.alpha += (this.targetAlpha - this.alpha) * 0.06;
+
+                    if (isRestoring) {
+                        this.targetAlpha = 1;
+                        const dx = this.originX - this.x;
+                        const dy = this.originY - this.y;
+                        this.vx += dx * 0.012; 
+                        this.vy += dy * 0.012;
+                        this.vx *= 0.85;      
+                        this.vy *= 0.85;
+
+                        if (Math.abs(dx) < 0.2 && Math.abs(dy) < 0.2 && Math.abs(this.vx) < 0.05) {
+                            this.x = this.originX;
+                            this.y = this.originY;
+                            this.isFloating = false;
+                            this.vx = 0;
+                            this.vy = 0;
+                        }
+                    } else if (this.isFloating) {
+                        // 慢速暗流：保持动作轻柔
+                        this.vx += Math.sin(time * 0.5 + this.originY * 0.008 + this.randomSeed) * 0.008;
+                        this.vy += Math.cos(time * 0.5 + this.originX * 0.008 + this.randomSeed) * 0.008;
+                        
+                        // 【核心改动】：水流阻尼由 0.97 改为 0.988。摩擦力变小，字会在水面上滑行漂浮得更远、范围极大
+                        this.vx *= 0.988; 
+                        this.vy *= 0.988;
+                    } else {
+                        this.x = this.originX;
+                        this.y = this.originY;
+                        return;
+                    }
+
+                    this.x += this.vx;
+                    this.y += this.vy;
+                }
+
+                draw() {
+                    if (this.alpha < 0.005) return;
+                    ctx.fillStyle = `rgba(255, 255, 255, ${this.alpha})`;
+                    ctx.fillText(this.char, this.x, this.y);
+                }
+            }
+
+            function init() {
+                width = window.innerWidth;
+                height = window.innerHeight;
+                
+                const dpr = window.devicePixelRatio || 1;
+                canvas.width = width * dpr;
+                canvas.height = height * dpr;
+                canvas.style.width = width + 'px';
+                canvas.style.height = height + 'px';
+                ctx.scale(dpr, dpr);
+
+                particles = [];
+                ripples = [];
+                isDisappearingSequentially = false;
+                disappearIndex = 0;
+                
+                fontSize = Math.max(16, Math.floor(height * 0.026));
+                ctx.textBaseline = 'top';
+                ctx.textAlign = 'center';
+
+                const colWidth = fontSize * 2.0;       
+                const rowHeight = fontSize * 1.35;     
+                const maxHeight = height * 0.65;       // 经文排版最大高度占屏幕 65%
+
+                // 【核心修复】：动态计算文本总列数，实现页面绝对居中
+                const charsPerCol = Math.floor(maxHeight / rowHeight);
+                const totalCols = Math.ceil(textContent.length / charsPerCol);
+                const totalBlockWidth = totalCols * colWidth;
+                const totalBlockHeight = charsPerCol * rowHeight;
+
+                // 轴心对齐中央
+                const startX = (width + totalBlockWidth) / 2 - colWidth / 2;
+                const startY = (height - totalBlockHeight) / 2;
+
+                let currentX = startX;
+                let currentY = startY;
+
+                for (let i = 0; i < textContent.length; i++) {
+                    const char = textContent[i];
+
+                    if (currentY + rowHeight > startY + totalBlockHeight) {
+                        currentY = startY;
+                        currentX -= colWidth; // 古典排版，向左换列
+                    }
+
+                    particles.push(new Particle(char, currentX, currentY));
+                    currentY += rowHeight;
+                }
+            }
+
+            function animate() {
+                ctx.clearRect(0, 0, width, height);
+                ctx.font = `normal ${fontSize}px "SimSun", "Songti SC", "STSong", serif`;
+                time += 0.01;
+
+                // 1. 渲染视觉波纹
+                ripples = ripples.filter(r => {
+                    r.update();
+                    r.draw();
+                    return r.alpha > 0;
+                });
+
+                // 2. 觀空依次渐隐（修复拼写错误，不再卡死）
+                if (isDisappearingSequentially) {
+                    disappearTimer++;
+                    // 每 3 帧让一个字进入消失状态，速度连贯自然
+                    if (disappearTimer % 3 === 0 && disappearIndex < particles.length) {
+                        particles[disappearIndex].targetAlpha = 0;
+                        particles[disappearIndex].isFloating = true;
+                        particles[disappearIndex].vy += 0.2; // 伴随轻微下沉
+                        disappearIndex++;
+                    }
+                    if (disappearIndex >= particles.length) {
+                        isDisappearingSequentially = false;
+                    }
+                }
+
+                let allRestored = true;
+                // 3. 渲染粒子
+                particles.forEach(p => {
+                    p.update();
+                    p.draw();
+                    if (p.isFloating || Math.abs(p.x - p.originX) > 0.5) {
+                        allRestored = false;
+                    }
+                });
+
+                if (isRestoring && allRestored) {
+                    isRestoring = false;
+                }
+
+                requestAnimationFrame(animate);
+            }
+
+            // 单击水面：大幅扩张影响范围，延长滑动距离
+            canvas.addEventListener('mousedown', (e) => {
+                if (isRestoring) return;
+                const mouseX = e.clientX;
+                const mouseY = e.clientY;
+                
+                ripples.push(new VisualRipple(mouseX, mouseY));
+
+                const impactRadius = 320; // 显著增加影响半径，让更多字受波浪牵连
+                const impactForce = 8;    // 调整基本推力
+
+                particles.forEach(p => {
+                    const dx = p.x - mouseX;
+                    const dy = p.y - mouseY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < impactRadius && p.alpha > 0.05) {
+                        p.isFloating = true;
+                        const force = (impactRadius - distance) / impactRadius;
+                        // 注入平滑动量，配合高阻尼，文字会缓慢滑行得很远
+                        p.vx += (dx / (distance || 1)) * force * impactForce * 0.4;
+                        p.vy += (dy / (distance || 1)) * force * impactForce * 0.4;
+                    }
+                });
+            });
+
+            // 双击：文字完全连贯隐没消失
+            canvas.addEventListener('dblclick', (e) => {
+                isRestoring = false;
+                isDisappearingSequentially = false;
+                const mouseX = e.clientX;
+                const mouseY = e.clientY;
+
+                particles.forEach(p => {
+                    const dx = p.x - mouseX;
+                    const dy = p.y - mouseY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    
+                    p.isFloating = true;
+                    setTimeout(() => {
+                        p.targetAlpha = 0;
+                        p.vx += (dx / (distance || 1)) * 1.5;
+                        p.vy += (dy / (distance || 1)) * 1.5;
+                    }, distance * 1.3); 
+                });
+            });
+
+            // 卍 按钮：全时段无条件强制重置秩序
+            restoreBtn.addEventListener('click', (e) => {
+                e.stopPropagation(); 
+                isDisappearingSequentially = false;
+                disappearIndex = 0;
+                isRestoring = true;
+                particles.forEach(p => {
+                    p.targetAlpha = 1;
+                    p.isFloating = true; // 激活物理引擎使其能计算回归动画
+                });
+            });
+
+            // 觀空 按钮：开启顺畅的逐字依次渐隐
+            voidBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                isRestoring = false;
+                isDisappearingSequentially = true;
+                disappearIndex = 0;
+                disappearTimer = 0;
+                // 确保所有尚未消失的字的目标透明度在未轮到它时还是可见的
+                particles.forEach(p => { p.targetAlpha = p.alpha; });
+            });
+
+            window.addEventListener('resize', () => {
+                init();
+            });
+
+            init();
+            animate();
+        });
+    </script>
+</body>
+</html>
